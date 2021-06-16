@@ -1,0 +1,16 @@
+atari-py==0.3.0
+cloudpickle==1.6.0
+Cython==0.29.23
+dataclasses==0.6
+future==0.18.2
+gym==0.18.3
+numpy==1.20.3
+opencv-python==4.5.2.54
+Pillow==8.2.0
+pkg-resources==0.0.0
+ptan==0.7
+pyglet==1.5.15
+scipy==1.6.3
+six==1.16.0
+torch @ file:///home/pi/tmp/torch-1.7.0a0-cp37-cp37m-linux_aarch64.whl
+typing-extensions==3.10.0.0
