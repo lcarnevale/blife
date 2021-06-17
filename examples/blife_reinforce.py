@@ -1,117 +1,108 @@
-#!/usr/bin/env python3
 import gym
-import ptan
+import argparse
 import numpy as np
-from tensorboardX import SummaryWriter
+from itertools import count
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
-GAMMA = 0.99
-LEARNING_RATE = 0.1
-EPISODES_TO_TRAIN = 4
+from torch.distributions import Categorical
 
 
-class PGN(nn.Module):
-    def __init__(self, input_size, n_actions):
-        super(PGN, self).__init__()
+parser = argparse.ArgumentParser(description='PyTorch REINFORCE example')
+parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
+                    help='discount factor (default: 0.99)')
+parser.add_argument('--seed', type=int, default=543, metavar='N',
+                    help='random seed (default: 543)')
+parser.add_argument('--render', action='store_true',
+                    help='render the environment')
+parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+                    help='interval between training status logs (default: 10)')
+args = parser.parse_args()
 
-        self.net = nn.Sequential(
-            nn.Linear(input_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, n_actions)
-        )
+
+env = gym.make('gympy:blife-v0')
+env.seed(args.seed)
+torch.manual_seed(args.seed)
+
+
+class Policy(nn.Module):
+    def __init__(self, state_space_size, action_space_size):
+        super(Policy, self).__init__()
+
+        self.affine1 = nn.Linear(state_space_size, 128)
+        self.dropout = nn.Dropout(p=0.6)
+        self.affine2 = nn.Linear(128, action_space_size)
+
+        self.saved_log_probs = []
+        self.rewards = []
 
     def forward(self, x):
-        return self.net(x)
+        x = self.affine1(x)
+        x = self.dropout(x)
+        x = F.relu(x)
+        action_scores = self.affine2(x)
+        return F.softmax(action_scores, dim=1)
 
 
-def calc_qvals(rewards):
-    res = []
-    sum_r = 0.0
-    for r in reversed(rewards):
-        sum_r *= GAMMA
-        sum_r += r
-        res.append(sum_r)
-    res = list(reversed(res))
-    mean_q = np.mean(res)
-    return [q - mean_q for q in res]
+policy = Policy(env.observation_space.shape[0], env.action_space.n)
+optimizer = optim.Adam(policy.parameters(), lr=1e-2)
+eps = np.finfo(np.float32).eps.item()
 
 
-if __name__ == "__main__":
-    env = gym.make('gympy:blife-v0')
-    # env = gym.make('CartPole-v0')
-    writer = SummaryWriter(comment="-blife-reinforce-baseline")
-    net = PGN(env.observation_space.shape[0], env.action_space.n)
+def select_action(state):
+    state = torch.from_numpy(state).float().unsqueeze(0)
+    probs = policy(state)
+    m = Categorical(probs)
+    action = m.sample()
+    policy.saved_log_probs.append(m.log_prob(action))
+    return action.item()
 
-    agent = ptan.agent.PolicyAgent(
-        net, 
-        preprocessor=ptan.agent.float32_preprocessor,
-        apply_softmax=True
-    )
-    exp_source = ptan.experience.ExperienceSourceFirstLast(env, agent, gamma=GAMMA)
-    optimizer = optim.Adam(net.parameters(), lr=LEARNING_RATE)
 
-    total_rewards = []
-    step_idx = 0
-    done_episodes = 0
+def finish_episode():
+    R = 0
+    policy_loss = []
+    returns = []
+    for r in policy.rewards[::-1]:
+        R = r + args.gamma * R
+        returns.insert(0, R)
+    returns = torch.tensor(returns)
+    returns = (returns - returns.mean()) / (returns.std() + eps)
+    for log_prob, R in zip(policy.saved_log_probs, returns):
+        policy_loss.append(-log_prob * R)
+    optimizer.zero_grad()
+    policy_loss = torch.cat(policy_loss).sum()
+    policy_loss.backward()
+    optimizer.step()
+    del policy.rewards[:]
+    del policy.saved_log_probs[:]
 
-    batch_episodes = 0
-    batch_states, batch_actions, batch_qvals = [], [], []
-    cur_states, cur_actions, cur_rewards = [], [], []
 
-    for step_idx, exp in enumerate(exp_source):
-        print("While step %d, state is %s and action is %s" % (step_idx, exp.state, exp.action))
-        cur_states.append(exp.state)
-        cur_actions.append(int(exp.action))
-        cur_rewards.append(exp.reward)
-        
-        if exp.last_state is None:
-            batch_states.extend(cur_states)
-            batch_actions.extend(cur_actions)
-            batch_qvals.extend(calc_qvals(cur_rewards))
-            cur_states.clear()
-            cur_actions.clear()
-            cur_rewards.clear()
-            batch_episodes += 1
-
-        # handle new rewards
-        new_rewards = exp_source.pop_total_rewards()
-        if new_rewards:
-            done_episodes += 1
-            reward = new_rewards[0]
-            total_rewards.append(reward)
-            mean_rewards = float(np.mean(total_rewards[-100:]))
-            print("%d: reward: %6.2f, mean_100: %6.2f, episodes: %d" % (
-                step_idx, reward, mean_rewards, done_episodes))
-            writer.add_scalar("reward", reward, step_idx)
-            writer.add_scalar("reward_100", mean_rewards, step_idx)
-            writer.add_scalar("episodes", done_episodes, step_idx)
-            if mean_rewards > 195:
-                print("Solved in %d steps and %d episodes!" % (step_idx, done_episodes))
+def main():
+    running_reward = 10
+    for i_episode in count(1):
+        state, ep_reward = env.reset(), 0
+        for t in range(1, 10000):  # Don't infinite loop while learning
+            action = select_action(state)
+            state, reward, done, _ = env.step(action)
+            if args.render:
+                env.render()
+            policy.rewards.append(reward)
+            ep_reward += reward
+            if done:
                 break
 
-        if batch_episodes < EPISODES_TO_TRAIN:
-            continue
+        running_reward = 0.05 * ep_reward + (1 - 0.05) * running_reward
+        finish_episode()
+        if i_episode % args.log_interval == 0:
+            print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
+                  i_episode, ep_reward, running_reward))
+        # if running_reward > env.spec.reward_threshold:
+        if running_reward > 20:
+            print("Solved! Running reward is now {} and "
+                  "the last episode runs to {} time steps!".format(running_reward, t))
+            break
 
-        states_v = torch.FloatTensor(batch_states)
-        batch_actions_t = torch.LongTensor(batch_actions)
-        batch_qvals_v = torch.FloatTensor(batch_qvals)
-
-        optimizer.zero_grad()
-        logits_v = net(states_v)
-        log_prob_v = F.log_softmax(logits_v, dim=1)
-        log_prob_actions_v = batch_qvals_v * log_prob_v[range(len(batch_states)), batch_actions_t]
-        loss_v = -log_prob_actions_v.mean()
-
-        loss_v.backward()
-        optimizer.step()
-
-        batch_episodes = 0
-        batch_states.clear()
-        batch_actions.clear()
-        batch_qvals.clear()
-
-    writer.close()
+if __name__ == '__main__':
+    main()
