@@ -122,13 +122,15 @@ class BatteryLifetimeEnv(gym.Env):
         """
         print("Moving action %d during step %d" % (action, self.__step_counter))
         done = False
-
+        
         self.__assert_action_valid(action)
         self.__actions_functions[action]()
         self.__observations = self.__next_observation()
         self.__power = self.__observations[0]
 
         reward = self.__reward_function()
+        if self.__step_counter == 100:
+            done = True
         self.__step_counter += 1
         self.__power_last = self.__power
         return np.array(self.__observations), reward, done, {}
