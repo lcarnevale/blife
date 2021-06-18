@@ -26,7 +26,7 @@ import paho.mqtt.client as mqtt
 class WhiteNoiseScenario:
     # TODO: builder pattern
     def __init__(self, host, topic, port=1883, num_samples=1000, rate=1, verbosity=False):
-        self.__setup_logging(verbosity)
+        # self.__setup_logging(verbosity)
 
         self.__mean = 0
         self.__std = 1
@@ -41,14 +41,11 @@ class WhiteNoiseScenario:
 
         self.__client.connected_flag = False
         self.__client.loop_start()
-        logging.info("connecting to broker ...")
+        print("connecting to broker ...")
         self.__client.connect(host, port, keepalive=60)
         while not self.__client.connected_flag: # wait in loop
-            logging.warning("waiting for connection ...")
+            print("waiting for connection ...")
             time.sleep(1)
-
-    def set_rate(self, rate):
-        self.__rate = rate
     
     def __setup_logging(self, verbosity):
         format = "%(asctime)s %(filename)s:%(lineno)d %(levelname)s - %(message)s"
@@ -120,9 +117,9 @@ class WhiteNoiseScenario:
         try:
             while True:
                 if (stop()):
-                    print('stop sampling')
+                    # print('stop sampling')
                     break
-                print('sampling')
+                # print('sampling')
                 sample = self.__get_sample()
                 self.__deliver_sample(sample)
                 time.sleep(self.__rate)
@@ -142,13 +139,17 @@ class WhiteNoiseScenario:
     def __deliver_sample(self, sample):
         sample = sample.tobytes()
         self.__client.publish(self.__topic, sample)
-        logging.debug("Sent new data to topic %s" % (self.__topic))
+        # print("Sent new data to topic %s" % (self.__topic))
 
 
     def reset(self):
         self.stop()
         time.sleep(0.1)
         self.start()
+
+    
+    def set_rate(self, rate):
+        self.__rate = rate
 
 
 
