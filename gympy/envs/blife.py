@@ -10,7 +10,7 @@ from .scenarios import WhiteNoiseScenario
 class BatteryLifetimeEnv(gym.Env):
     """
     Description:
-        This blife environments simulates the behavior of a re-chargable
+        The blife environment simulates the behavior of a re-chargable
         lithium battery while the controlled device samples white noise
         and delivery it out in streaming or batch processes.
         The controlled device is a Raspberry Pi 3.
