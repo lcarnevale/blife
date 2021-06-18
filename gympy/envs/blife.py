@@ -50,7 +50,7 @@ class BatteryLifetimeEnv(gym.Env):
 
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, battery_capacity=2000, num_discrete_actions=2):
+    def __init__(self, battery_capacity=2000, num_discrete_actions=3):
         self.__step_counter = 0
         self.__battery_capacity = battery_capacity
 
@@ -81,6 +81,7 @@ class BatteryLifetimeEnv(gym.Env):
         self.action_space = spaces.Discrete(num_discrete_actions)
         self.observation_space = spaces.Box(low, high, dtype = np.float16)
 
+
     def reset(self):
         """Reset the state of the environment to an initial state.
 
@@ -96,6 +97,7 @@ class BatteryLifetimeEnv(gym.Env):
         voltage = self.__observations[0]
         current = self.__observations[1]
         self.__power_last = current * voltage
+        print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, self.__power_last))
         return np.array(self.__observations)
 
     def __configure_experiment(self):
@@ -120,12 +122,14 @@ class BatteryLifetimeEnv(gym.Env):
             self.__sensors.get_net_bytes_sent()
         ]
 
+
     def step(self, action):
         """Execute one time step within the environment.
 
         Returns:
 
         """
+        self.__step_counter += 1
         print("tentative to move action %d during step %d" % (action, self.__step_counter))
         done = False
         
@@ -140,20 +144,20 @@ class BatteryLifetimeEnv(gym.Env):
         voltage = self.__observations[0]
         current = self.__observations[1]
         power = current * voltage
-        print("\tpower at step %d: %.3fmA" % (self.__step_counter, power))
+        print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, power))
 
         # calculate reward
         reward = self.__reward_function(power)
-        print("\treward (energy_delta): %.3fmW" % (reward))
+        print("\t\treward (energy_delta): %.3fmW" % (reward))
 
         # verify the termination condition
         expected_runtime = self.__battery_capacity / current
         self.__set_max_expected_runtime(expected_runtime)
         done = self.__termination_function(expected_runtime)
-        print("\ttermination: %.3fh (runtime) >= 24h is %s" % (expected_runtime, done))
-        print("\tmax runtime is %.3fh" % (self.__max_expected_runtime))
+        print("\t\ttermination: %.3fh (runtime) >= 24h is %s" % (expected_runtime, done))
+        print("\t\tmax runtime is %.3fh" % (self.__max_expected_runtime))
         
-        self.__step_counter += 1
+        self.__power_last = power
         return np.array(self.__observations), reward, done, {}
     
     def __valuate_action(self, action):
