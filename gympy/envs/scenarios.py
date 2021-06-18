@@ -117,9 +117,9 @@ class WhiteNoiseScenario:
         try:
             while True:
                 if (stop()):
-                    # print('stop sampling')
+                    print('\tstop sampling')
                     break
-                # print('sampling')
+                print('\tsampling right now (rate: %s)!' % (self.__rate))
                 sample = self.__get_sample()
                 self.__deliver_sample(sample)
                 time.sleep(self.__rate)
@@ -139,7 +139,7 @@ class WhiteNoiseScenario:
     def __deliver_sample(self, sample):
         sample = sample.tobytes()
         self.__client.publish(self.__topic, sample)
-        # print("Sent new data to topic %s" % (self.__topic))
+        print("\tsend new data out")
 
 
     def reset(self):
