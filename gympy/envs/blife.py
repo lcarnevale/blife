@@ -16,7 +16,8 @@ class BatteryLifetimeEnv(gym.Env):
         The controlled device is a Raspberry Pi 3.
 
     Source:
-        tbd
+        This environment and its documentation is available at
+        https://github.com/lcarnevale/blife
 
     Observation:
         Type: Box(4)
