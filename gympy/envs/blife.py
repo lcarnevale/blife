@@ -23,7 +23,7 @@ class BatteryLifetimeEnv(gym.Env):
         Type: Box(4)
         Num     Observation                 Min     Max
         0       Battery Voltage             0 V     5 V
-        1       Battery Current             0 A     2 A
+        1       Battery Current             0 mA    2000 mA
         2       Network Outbound Traffic    0 B     +inf
         3       Buffer Size                 0       100
 
