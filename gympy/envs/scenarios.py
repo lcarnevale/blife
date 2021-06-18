@@ -18,6 +18,7 @@ import numpy
 import socket
 import logging
 import argparse
+import persistqueue
 import numpy as np
 from threading import Thread
 import paho.mqtt.client as mqtt
@@ -37,6 +38,9 @@ class WhiteNoiseScenario:
         self.__port = port
         self.__topic = topic
 
+        self.__queue = persistqueue.SQLiteQueue('data', multithreading=True, auto_commit=True)
+
+        self.__transmission = 'streaming'
         self.__client = self.__configure_mqtt_client()
 
         self.__client.connected_flag = False
@@ -106,28 +110,56 @@ class WhiteNoiseScenario:
 
 
     def start(self):
-        self.__stop_threads = False
-        self.__thread = Thread(
-            target = self.__worker, 
-            args = (lambda : self.__stop_threads, )
+        self.__stop_threads_writer = False
+        self.__stop_threads_reader = False
+        self.__thread_writer = Thread(
+            target = self.__writer, 
+            args = (lambda : self.__stop_threads_writer, )
         )
-        self.__thread.start()
+        self.__thread_reader = Thread(
+            target = self.__reader,
+            args = (lambda : self.__stop_threads_reader, )
+        )
+        self.__thread_writer.start()
+        self.__thread_reader.start()
 
-    def __worker(self, stop):
+    def __writer(self, stop):
         try:
             while True:
                 if (stop()):
                     print('\tstop sampling')
                     break
-                print('\tsampling right now (rate: %s)!' % (self.__rate))
                 sample = self.__get_sample()
-                self.__deliver_sample(sample)
+                print('\tsampling right now (rate: %s)!' % (self.__rate))
+                if (self.__transmission == 'streaming'):
+                    print('\tsending streming right now (rate: %s)!' % (self.__rate))
+                    self.__deliver_sample(sample)
+                elif (self.__transmission == 'batch'):
+                    print('\tqueueing batch right now (rate: %s)!' % (self.__rate))
+                    self.__queue.put(sample)
                 time.sleep(self.__rate)
         except KeyboardInterrupt:
             pass
 
+    def __reader(self, stop):
+        try:
+            while True:
+                if (stop()):
+                    print('\tstop dequeueing')
+                    break
+                while not self.__queue.empty():
+                    print('\tdequeueing batch right now!')
+                    sample = self.__queue.get()
+                    print('\tsending batch right now!')
+                    self.__deliver_sample(sample)
+                time.sleep(5)
+        except KeyboardInterrupt:
+            pass
+
     def stop(self):
-        self.__stop_threads = True
+        self.__stop_threads_writer = True
+        self.__stop_threads_reader = True
+
 
     def __get_sample(self):
         return numpy.random.normal(
@@ -150,6 +182,12 @@ class WhiteNoiseScenario:
     
     def set_rate(self, rate):
         self.__rate = rate
+
+    def set_transmission(self, transmission):
+        self.__transmission = transmission
+
+    def get_queue_size(self):
+        return self.__queue.size
 
 
 
@@ -179,6 +217,10 @@ if __name__ == "__main__":
     )
     white_noise_scenario.start()
     time.sleep(5)
+    white_noise_scenario.set_transmission('streaming')
     white_noise_scenario.set_rate(3)
     time.sleep(5)
+    white_noise_scenario.set_transmission('batch')
+    white_noise_scenario.set_rate(0.2)
+    time.sleep(6)
     white_noise_scenario.stop()

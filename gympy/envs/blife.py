@@ -24,22 +24,20 @@ class BatteryLifetimeEnv(gym.Env):
         Num     Observation                 Min     Max
         0       Battery Voltage             0 V     5 V
         1       Battery Current             0 mA    2000 mA
-        2       Network Outbound Traffic    0 B     +inf
+        2       Network Outbound Traffic    0       +inf
         3       Buffer Size                 0       100
 
     Actions:
         Type: Discrete(3)
         Num     Action
         0       do nothing
-        1       sample any 1s, deliver any 1s (streaming)
-        2       sample any 10s, deliver any 10s (streaming)
+        1       sample any 0.2s, deliver any 0.2s (streaming)
+        2       sample any 1s, deliver any 1s (streaming)
+        3       sample any 0.2s, deliver any 5s (batch)
+        4       sample ant 1s, deliver any 5s (batch)
 
     Reward:
-        TODO("Ha senso?")
-        Reward of 0 is awarded if the agent observes a battery power consumption
-        less than 2W.
-        Reward of -1 is awarded if the agent observes a battery power consumption
-        grather than 2W.
+        TODO
 
     Starting State:
         Configure and start the white noise scenario. 
@@ -50,7 +48,7 @@ class BatteryLifetimeEnv(gym.Env):
 
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, battery_capacity=2000, num_discrete_actions=3):
+    def __init__(self, battery_capacity=2000, num_discrete_actions=5):
         self.__step_counter = 0
         self.__battery_capacity = battery_capacity
 
@@ -58,7 +56,7 @@ class BatteryLifetimeEnv(gym.Env):
         max_battery_voltage = 5
 
         min_battery_current = 0
-        max_battery_current = 2
+        max_battery_current = 2000
 
         min_net_outbound = 0
         max_net_outbound = 1000000000
@@ -68,15 +66,17 @@ class BatteryLifetimeEnv(gym.Env):
 
         self.__perform_action = [
             self.__action_do_nothing,
-            self.__action_streaming_one_second,
-            self.__action_streaming_ten_second
+            self.__action_streaming_one,
+            self.__action_streaming_two,
+            self.__action_batch_one,
+            self.__action_batch_two
         ]
 
         self.__sensors = Sensors()
         self.__max_expected_runtime = 0.0
 
-        low = np.array([min_battery_voltage, min_battery_current, min_net_outbound], dtype = np.float16)
-        high = np.array([max_battery_voltage, max_battery_current, max_net_outbound], dtype = np.float16)
+        low = np.array([min_battery_voltage, min_battery_current, min_net_outbound, min_buffer_size], dtype = np.float16)
+        high = np.array([max_battery_voltage, max_battery_current, max_net_outbound, max_buffer_size], dtype = np.float16)
 
         self.action_space = spaces.Discrete(num_discrete_actions)
         self.observation_space = spaces.Box(low, high, dtype = np.float16)
@@ -119,7 +119,8 @@ class BatteryLifetimeEnv(gym.Env):
         return [
             self.__sensors.get_bus_voltage(),
             self.__sensors.get_bus_current(),
-            self.__sensors.get_net_bytes_sent()
+            self.__sensors.get_net_bytes_sent(),
+            self.__scenario.get_queue_size()
         ]
 
 
@@ -164,17 +165,32 @@ class BatteryLifetimeEnv(gym.Env):
         err_msg = "%r (%s) invalid" % (action, type(action))
         assert self.action_space.contains(action), err_msg
 
+    # action 0
     def __action_do_nothing(self):
         # print('do nothing')
         pass
 
-    def __action_streaming_one_second(self):
+    # action 1
+    def __action_streaming_one(self):
         # print("sample any 1s, deliver any 1s (streaming)")
+        self.__scenario.set_transmission('streaming')
+        self.__scenario.set_rate(0.2)
+
+    # action 2
+    def __action_streaming_two(self):
+        # print("sample any 10s, deliver any 10s (streaming)")
+        self.__scenario.set_transmission('streaming')
         self.__scenario.set_rate(1)
 
-    def __action_streaming_ten_second(self):
-        # print("sample any 10s, deliver any 10s (streaming)")
-        self.__scenario.set_rate(10)
+    # action 3
+    def __action_batch_one(self):
+        self.__scenario.set_transmission('batch')
+        self.__scenario.set_rate(0.2)
+
+    # action 4
+    def __action_batch_two(self):
+        self.__scenario.set_transmission('batch')
+        self.__scenario.set_rate(1)
 
     def __reward_function(self, power):
         """Calculate the reward.
@@ -204,3 +220,6 @@ class BatteryLifetimeEnv(gym.Env):
             bool representing the termination validation
         """
         return expected_runtime >= 24
+
+    def close():
+        self.__scenario.stop()
