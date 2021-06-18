@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 # import matplotlib.pyplot as plt
-# import pandas as pd
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -82,14 +82,14 @@ def update_policy():
     optimizer.step()
     
     #Save and intialize episode history counters
-    policy.loss_history.append(loss.data[0])
+    policy.loss_history.append(loss.item())
     policy.reward_history.append(np.sum(policy.reward_episode))
     policy.policy_history = Variable(torch.Tensor())
     policy.reward_episode= []
 
 
-def main(episodes=10, MAX_STEP_NUM=30):
-    running_reward = 10
+def main(episodes=10, MAX_STEP_NUM=2):
+    running_reward = 0
     for episode in range(episodes):
         # Reset environment and record the starting state
         state = env.reset()
@@ -110,16 +110,15 @@ def main(episodes=10, MAX_STEP_NUM=30):
 
         update_policy()
 
-        if episode % 1 == 0:
-            print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(episode, step, running_reward))
+        print('Episode {}\tLast length: {:5d}\tAverage length: {:.2f}'.format(episode, step, running_reward))
 
-        if running_reward > env.spec.reward_threshold:
-            print("Solved! Running reward is now {} and the last episode runs to {} step steps!".format(running_reward, step))
-            break
+        # if running_reward > env.spec.reward_threshold:
+        #     print("Solved! Running reward is now {} and the last episode runs to {} step steps!".format(running_reward, step))
+        #     break
     
     # window = int(episodes/20)
 
-    # fig, ((ax1), (ax2)) = plt.subplots(2, 1, sharey=True, figsize=[9,9]);
+    # fig, ((ax1), (ax2)) = plt.subplots(2, 1, sharey=True, figsize=[9,9])
     # rolling_mean = pd.Series(policy.reward_history).rolling(window).mean()
     # std = pd.Series(policy.reward_history).rolling(window).std()
     # ax1.plot(rolling_mean)
@@ -133,7 +132,7 @@ def main(episodes=10, MAX_STEP_NUM=30):
 
     # fig.tight_layout(pad=2)
     # plt.show()
-    # #fig.savefig('results.png')
+    # fig.savefig('results.png')
 
 
 if __name__ == "__main__":
