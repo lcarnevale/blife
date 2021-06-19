@@ -97,7 +97,7 @@ class BatteryLifetimeEnv(gym.Env):
         voltage = self.__observations[0]
         current = self.__observations[1]
         self.__power_last = current * voltage
-        print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, self.__power_last))
+        # print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, self.__power_last))
         return np.array(self.__observations)
 
     def __configure_experiment(self):
@@ -131,13 +131,13 @@ class BatteryLifetimeEnv(gym.Env):
 
         """
         self.__step_counter += 1
-        print("tentative to move action %d during step %d" % (action, self.__step_counter))
+        # print("tentative to move action %d during step %d" % (action, self.__step_counter))
         done = False
         
         # perform action
         self.__valuate_action(action)
         self.__perform_action[action]()
-        print("waiting action has effect ...")
+        # print("waiting action has effect ...")
         time.sleep(10)
 
         # collect observation
@@ -145,18 +145,18 @@ class BatteryLifetimeEnv(gym.Env):
         voltage = self.__observations[0]
         current = self.__observations[1]
         power = current * voltage
-        print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, power))
+        # print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, power))
 
         # calculate reward
         reward = self.__reward_function(power)
-        print("\t\treward (energy_delta): %.3fmW" % (reward))
+        # print("\t\treward (energy_delta): %.3fmW" % (reward))
 
         # verify the termination condition
         expected_runtime = self.__battery_capacity / current
         self.__set_max_expected_runtime(expected_runtime)
         done = self.__termination_function(expected_runtime)
-        print("\t\ttermination: %.3fh (runtime) >= 24h is %s" % (expected_runtime, done))
-        print("\t\tmax runtime is %.3fh" % (self.__max_expected_runtime))
+        # print("\t\ttermination: %.3fh (runtime) >= 8h is %s" % (expected_runtime, done))
+        # print("\t\tmax runtime is %.3fh" % (self.__max_expected_runtime))
         
         self.__power_last = power
         return np.array(self.__observations), reward, done, {}
@@ -219,7 +219,7 @@ class BatteryLifetimeEnv(gym.Env):
         Returns:
             bool representing the termination validation
         """
-        return expected_runtime >= 24
+        return expected_runtime >= 9
 
-    def close():
+    def close(self):
         self.__scenario.stop()
