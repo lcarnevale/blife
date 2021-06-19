@@ -45,10 +45,10 @@ class WhiteNoiseScenario:
 
         self.__client.connected_flag = False
         self.__client.loop_start()
-        print("connecting to broker ...")
+        # print("connecting to broker ...")
         self.__client.connect(host, port, keepalive=60)
         while not self.__client.connected_flag: # wait in loop
-            print("waiting for connection ...")
+            # print("waiting for connection ...")
             time.sleep(1)
     
     def __setup_logging(self, verbosity):
@@ -127,15 +127,15 @@ class WhiteNoiseScenario:
         try:
             while True:
                 if (stop()):
-                    print('\tstop sampling')
+                    # print('\tstop sampling')
                     break
                 sample = self.__get_sample()
-                print('\tsampling right now (rate: %s)!' % (self.__rate))
+                # print('\tsampling right now (rate: %s)!' % (self.__rate))
                 if (self.__transmission == 'streaming'):
-                    print('\tsending streming right now (rate: %s)!' % (self.__rate))
+                    # print('\tsending streming right now (rate: %s)!' % (self.__rate))
                     self.__deliver_sample(sample)
                 elif (self.__transmission == 'batch'):
-                    print('\tqueueing batch right now (rate: %s)!' % (self.__rate))
+                    # print('\tqueueing batch right now (rate: %s)!' % (self.__rate))
                     self.__queue.put(sample)
                 time.sleep(self.__rate)
         except KeyboardInterrupt:
@@ -145,12 +145,12 @@ class WhiteNoiseScenario:
         try:
             while True:
                 if (stop()):
-                    print('\tstop dequeueing')
+                    # print('\tstop dequeueing')
                     break
                 while not self.__queue.empty():
-                    print('\tdequeueing batch right now!')
+                    # print('\tdequeueing batch right now!')
                     sample = self.__queue.get()
-                    print('\tsending batch right now!')
+                    # print('\tsending batch right now!')
                     self.__deliver_sample(sample)
                 time.sleep(5)
         except KeyboardInterrupt:
@@ -159,6 +159,8 @@ class WhiteNoiseScenario:
     def stop(self):
         self.__stop_threads_writer = True
         self.__stop_threads_reader = True
+        self.__client.disconnect()
+        time.sleep(0.2)
 
 
     def __get_sample(self):
@@ -171,7 +173,7 @@ class WhiteNoiseScenario:
     def __deliver_sample(self, sample):
         sample = sample.tobytes()
         self.__client.publish(self.__topic, sample)
-        print("\tsend new data out")
+        # print("\tsend new data out")
 
 
     def reset(self):
