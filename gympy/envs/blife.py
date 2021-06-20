@@ -46,23 +46,21 @@ class BatteryLifetimeEnv(gym.Env):
         TODO        
     """
 
-    metadata = {'render.modes': ['human']}
-
     def __init__(self, battery_capacity=2000, num_discrete_actions=5):
         self.__step_counter = 0
         self.__battery_capacity = battery_capacity
 
-        min_battery_voltage = 0
-        max_battery_voltage = 5
+        min_battery_voltage = 0         #V
+        max_battery_voltage = 5         #V
 
-        min_battery_current = 0
-        max_battery_current = 2000
+        min_battery_current = 0         #mA
+        max_battery_current = 2000      #mA
 
-        min_net_outbound = 0
-        max_net_outbound = 1000000000
+        min_net_outbound = 0            #Bytes
+        max_net_outbound = 1000000000   #Bytes
 
-        min_buffer_size = 0
-        max_buffer_size = 100
+        min_buffer_size = 0             #Units
+        max_buffer_size = 100           #Units
 
         self.__perform_action = [
             self.__action_do_nothing,
@@ -75,8 +73,16 @@ class BatteryLifetimeEnv(gym.Env):
         self.__sensors = Sensors()
         self.__max_expected_runtime = 0.0
 
-        low = np.array([min_battery_voltage, min_battery_current, min_net_outbound, min_buffer_size], dtype = np.float16)
-        high = np.array([max_battery_voltage, max_battery_current, max_net_outbound, max_buffer_size], dtype = np.float16)
+        low = np.array([
+            min_battery_voltage, min_battery_current, 
+            min_net_outbound, min_buffer_size], 
+            dtype = np.float16
+        )
+        high = np.array([
+            max_battery_voltage, max_battery_current,
+            max_net_outbound, max_buffer_size],
+            dtype = np.float16
+        )
 
         self.action_space = spaces.Discrete(num_discrete_actions)
         self.observation_space = spaces.Box(low, high, dtype = np.float16)
@@ -86,28 +92,33 @@ class BatteryLifetimeEnv(gym.Env):
         """Reset the state of the environment to an initial state.
 
         Returns:
-            The observations space wrapped within a numpy array.
+            The observations space.
             See the class description for more details.
         """
-        self.__step_counter = 0
         self.__configure_experiment()
         self.__reset_experiment()
-
-        self.__observations = self.__next_observation()
-        voltage = self.__observations[0]
-        current = self.__observations[1]
-        self.__power_last = current * voltage
-        # print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, self.__power_last))
-        return np.array(self.__observations)
+        return self.__observe()
 
     def __configure_experiment(self):
         self.__scenario = WhiteNoiseScenario(
-        'broker.mqttdashboard.com',
-        '/fcrlab/distinsys/lcarnevale',
-    )
+            'broker.mqttdashboard.com',
+            '/fcrlab/distinsys/lcarnevale',
+        )
     
     def __reset_experiment(self):
         self.__scenario.reset()
+
+    def __observe(self):
+        """
+        Returns:
+            The observations space wrapped within a numpy array.
+            See the class description for more details.
+        """
+        observations = self.__next_observation()
+        voltage = observations[0]
+        current = observations[1]
+        self.__power_last_mean = current * voltage
+        return np.array(observations)
 
     def __next_observation(self):
         """Observe the environment.
@@ -130,36 +141,30 @@ class BatteryLifetimeEnv(gym.Env):
         Returns:
 
         """
-        self.__step_counter += 1
-        # print("tentative to move action %d during step %d" % (action, self.__step_counter))
         done = False
         
         # perform action
         self.__valuate_action(action)
         self.__perform_action[action]()
-        # print("waiting action has effect ...")
-        time.sleep(10)
-
+        
         # collect observation
-        self.__observations = self.__next_observation()
-        voltage = self.__observations[0]
-        current = self.__observations[1]
-        power = current * voltage
-        # print("\t\tpower at step %d: %.3fmA" % (self.__step_counter, power))
+        observation = self.__sub_observe()
+        voltage_mean = observation[0]
+        current_mean = observation[1]
+        observation = np.array(observation)
 
         # calculate reward
-        reward = self.__reward_function(power)
-        # print("\t\treward (energy_delta): %.3fmW" % (reward))
+        power_mean = voltage_mean * current_mean
+        reward = self.__reward_function(power_mean)
 
         # verify the termination condition
-        expected_runtime = self.__battery_capacity / current
+        expected_runtime = self.__battery_capacity / current_mean
         self.__set_max_expected_runtime(expected_runtime)
         done = self.__termination_function(expected_runtime)
         # print("\t\ttermination: %.3fh (runtime) >= 8h is %s" % (expected_runtime, done))
-        # print("\t\tmax runtime is %.3fh" % (self.__max_expected_runtime))
         
-        self.__power_last = power
-        return np.array(self.__observations), reward, done, {}
+        self.__power_last_mean = power_mean
+        return observation, reward, done, {}
     
     def __valuate_action(self, action):
         err_msg = "%r (%s) invalid" % (action, type(action))
@@ -174,7 +179,7 @@ class BatteryLifetimeEnv(gym.Env):
     def __action_streaming_one(self):
         # print("sample any 1s, deliver any 1s (streaming)")
         self.__scenario.set_transmission('streaming')
-        self.__scenario.set_rate(0.2)
+        self.__scenario.set_rate(0.05)
 
     # action 2
     def __action_streaming_two(self):
@@ -185,27 +190,48 @@ class BatteryLifetimeEnv(gym.Env):
     # action 3
     def __action_batch_one(self):
         self.__scenario.set_transmission('batch')
-        self.__scenario.set_rate(0.2)
+        self.__scenario.set_rate(0.05)
 
     # action 4
     def __action_batch_two(self):
         self.__scenario.set_transmission('batch')
         self.__scenario.set_rate(1)
 
-    def __reward_function(self, power):
+    def __sub_observe(self, observation_rate=1, observation_window=15):
+        """Observe the environment under specific conditions.
+        """
+        voltage_sub_history = list()
+        current_sub_history = list()
+        net_bytes_sent_sub_history = list()
+        queue_size_sub_history = list()
+        for _ in range(observation_window):
+            observations = self.__next_observation()
+            voltage_sub_history.append(observations[0])
+            current_sub_history.append(observations[1])
+            net_bytes_sent_sub_history.append(observations[2])
+            queue_size_sub_history.append(observations[3])
+            time.sleep(observation_rate)
+        return [
+            np.array(voltage_sub_history).mean(),
+            np.array(current_sub_history).mean(),
+            np.array(net_bytes_sent_sub_history).mean(),
+            np.array(queue_size_sub_history).mean()
+        ]
+
+    def __reward_function(self, power_mean):
         """Calculate the reward.
 
         Returns:
             float representing the energy delta in mJ
         """
-        energy_delta = - (power - self.__power_last) * 1
+        energy_delta = - (power_mean - self.__power_last_mean) * 1
         return energy_delta
 
     def __set_max_expected_runtime(self, expected_runtime):
         if expected_runtime > self.__max_expected_runtime:
             self.__max_expected_runtime = expected_runtime
 
-    def __termination_function(self, expected_runtime):
+    def __termination_function(self, expected_runtime, target_expected_runtime=8.5):
         """Calculate the termination
 
         With the battery capacity and average current consumption,
@@ -219,7 +245,8 @@ class BatteryLifetimeEnv(gym.Env):
         Returns:
             bool representing the termination validation
         """
-        return expected_runtime >= 9
+        return expected_runtime >= target_expected_runtime
+
 
     def close(self):
         self.__scenario.stop()
