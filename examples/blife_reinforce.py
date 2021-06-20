@@ -2,6 +2,8 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 # import pandas as pd
+from sklearn import preprocessing
+from itertools import count
 
 import torch
 import torch.nn as nn
@@ -13,7 +15,7 @@ env = gym.make('gympy:blife-v0')
 torch.manual_seed(1)
 
 # Hyperparameters
-learning_rate = 0.01
+learning_rate = 0.1
 gamma = 0.99
 
 
@@ -87,37 +89,7 @@ def update_policy():
     policy.policy_history = torch.empty((), dtype=torch.float32, device = 'cpu')
     policy.reward_episode= []
 
-def main(episodes=30, MAX_STEP_NUM=30):
-    running_reward = 0
-    for episode in range(episodes):
-        # Reset environment and record the starting state
-        state = env.reset()
-        done = False
-    
-        for step in range(1, MAX_STEP_NUM+1):
-            action = select_action(state)
-            # Step through environment using chosen action
-            state, reward, done, _ = env.step(action.item())
-
-            # Save reward
-            policy.reward_episode.append(reward)
-            if done:
-                break
-        reward_episode = np.sum(policy.reward_episode)
-        
-        # Used to determine when the environment is solved.
-        running_reward = (running_reward * gamma) + (step * learning_rate)
-
-        update_policy()
-        print('Episode %d\tLast length (steps): %d\tAverage length (steps): %.2f\tReward episode: %.3f\tLoss: %s' % (episode, step, running_reward, reward_episode, policy.loss_history[-1]))
-
-        env.close()
-
-
-        # if running_reward > env.spec.reward_threshold:
-        #     print("Solved! Running reward is now {} and the last episode runs to {} step steps!".format(running_reward, step))
-        #     break
-    
+def render():
     # window = int(episodes/1)
     window = 1
 
@@ -152,6 +124,39 @@ def main(episodes=30, MAX_STEP_NUM=30):
     fig.tight_layout(pad=2)
     fig.savefig('loss.png')
 
+
+def main(episodes=1000):
+    running_reward = 0
+    for episode in range(episodes):
+        # Reset environment and record the starting state
+        state = env.reset()
+        done = False
+    
+        for step in count():
+            reshaped_state = np.array(state).reshape(1, -1)
+            normalized_state = preprocessing.normalize(reshaped_state, norm='l2')
+            action = select_action(state)
+
+            # Step through environment using chosen action
+            state, reward, done, _ = env.step(action.item())
+
+            # Save reward
+            policy.reward_episode.append(reward)
+            reward_episode = np.sum(policy.reward_episode)
+            print('Episode %d-%d\tAction: %d\tReward: %.3f' % (episode, step, action, reward_episode))
+            if done:
+                break
+        reward_episode = np.sum(policy.reward_episode)
+        
+        # Used to determine when the environment is solved.
+        running_reward = (running_reward * gamma) + (step * learning_rate)
+
+        update_policy()
+        print('Episode %d\tSteps: %d\tReward: %.3f\tLoss: %s' % (episode, step, reward_episode, policy.loss_history[-1]))
+
+        render()
+
+        env.close()
 
 if __name__ == "__main__":
     main()
